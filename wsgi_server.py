@@ -2,6 +2,9 @@ import socket
 import io
 import sys
 from datetime import datetime
+import errno
+import os
+import signal
 
 class WSGIServer():
 
@@ -26,14 +29,43 @@ class WSGIServer():
     def set_app(self, application):
         self.application = application
 
+    def grim_reaper(self, signum, frame):
+        while True:
+            try:
+                pid, status = os.waitpid(
+                    -1,
+                    os.WNOHANG
+                )
+            except OSError:
+                return
+        
+        if pid == 0:
+            return
+
     def serve_forever(self):
         listn_socket = self.listen_socket
-        while True:
-            self.client_connection, client_address = listn_socket.accept()
-            self.handle_one_request()
 
-    def handle_one_request(self):
-        request_data = self.client_connection.recv(1024)
+        signal.signal(signal.SIGCHLD, self.grim_reaper)
+        while True:
+            try:
+                client_connection, client_address = listn_socket.accept()
+            except IOError as e:
+                code = e.args
+                # Restart 'accept' if it was interrupted
+                if code == errno.EINTR:
+                    continue
+                else:
+                    raise
+            pid = os.fork()
+            if pid == 0: # child
+                listn_socket.close()
+                self.handle_one_request(client_connection)
+                os._exit(0)
+            else:   # parent
+                client_connection.close()
+
+    def handle_one_request(self, client_connection):
+        request_data = client_connection.recv(1024)
         self.request_data = request_data = request_data.decode('utf-8')
         # Print formatted request data
         print(''.join(
@@ -43,7 +75,7 @@ class WSGIServer():
         self.parse_request(request_data)
         env = self.get_environ()
         result = self.application(env, self.start_response)
-        self.finish_response(result)
+        self.finish_response(result, client_connection)
     
     def parse_request(self, text):
         request_line = text.splitlines()[0]
@@ -76,25 +108,23 @@ class WSGIServer():
         self.headers_set = [status, response_headers + server_headers]
         return self.finish_response
     
-    def finish_response(self, result):
+    def finish_response(self, result, client_connection):
         try:
             status, response_headers = self.headers_set
             response = f'HTTP/1.1 {status}\r\n'
             for header in response_headers:
                 response += '{0}: {1}\r\n'.format(*header)
             response += '\r\n'
-            print(result)
             for data in result:
-                print(data)
                 response += data.decode('utf-8')
             # Print formatted response
             print(''.join(
                 f'> {line}\n' for line in response.splitlines()
             ))
             response_bytes = response.encode()
-            self.client_connection.sendall(response_bytes)
+            client_connection.sendall(response_bytes)
         finally:
-            self.client_connection.close()
+            client_connection.close()
 
 SERVER_ADDRESS = (HOST, PORT) = '', 8888
 
