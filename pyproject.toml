@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "simple_wsgi_server"
+version = "0.1.0"
+description = ""
+authors = ["phoro3"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[tool.poetry.dev-dependencies]
+pylint = "^2.4.4"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
