@@ -82,12 +82,17 @@ class WSGIServer():
         request_line = request_line.rstrip(('\r\n'))
         (self.request_method, self.path, self.request_version) = \
             request_line.split()
+        if '?' in self.path:
+            (self.path, self.query) = self.path.split('?')
+        else:
+            self.query = ''
 
     def get_environ(self):
         return {
             # CGI variables
             'REQUEST_METHOD': self.request_method,
             'PATH_INFO': self.path,
+            'QUERY_STRING': self.query,
             'SERVER_NAME': self.server_name,
             'SERVER_PORT': self.server_port,
             # WSGI variables
